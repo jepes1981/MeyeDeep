@@ -4,7 +4,7 @@ from PIL import Image
 from deepstack_sdk import ServerConfig, Detection
 import urllib.request
 
-threshold = 0.5
+threshold = 0.55
 meye_recording_state = False
 record_delay_end = 15
 time_from_last_detection = record_delay_end
@@ -81,10 +81,10 @@ def get_image():
     img = Image.open("output.jpg")
     return img
 
-def check_detection(response):
+def check_detection(response, object):
     personfound = False
     for obj in response:
-        if (obj.label == "person") and obj.confidence>=threshold:
+        if (obj.label == object) and obj.confidence>=threshold:
             personfound = True
             print(obj.label, obj.confidence)
             print("Name: {}, Confidence: {}, x_min: {}, y_min: {}, x_max: {}, y_max: {}".format(obj.label, obj.confidence, obj.x_min, obj.y_min, obj.x_max, obj.y_max))
@@ -106,11 +106,13 @@ if __name__ == "__main__":
     while True:
         start = time.time()
         try:
+            #print('deepcheck')
+            print(".",end='',flush=True)
             response = detection.detectObject(get_image(),output="frane.jpg")
         except:
             print("error reaching deepstackAI")
         try:
-            personInFrame = check_detection(response)
+            personInFrame = check_detection(response, object="person")
         except Exception as e:
             print("exception caused by unreachable deepstackAI:", str(e))
         #print("PersonInFrame = ", personInFrame)
