@@ -3,6 +3,8 @@ import urllib.request
 from PIL import Image
 from deepstack_sdk import ServerConfig, Detection
 import urllib.request
+import shutil
+import datetime
 
 threshold = 0.55
 meye_recording_state = False
@@ -90,7 +92,19 @@ def check_detection(response, object):
             print("Name: {}, Confidence: {}, x_min: {}, y_min: {}, x_max: {}, y_max: {}".format(obj.label, obj.confidence, obj.x_min, obj.y_min, obj.x_max, obj.y_max))
     return personfound
   
-
+def save_image(source,destination_folder):  #source=path and filename #destination_folder=folder only path
+    fname = str(datetime.datetime.now()).replace("-", "").replace(" ", "").replace(":", "").replace(".", "")
+    print(fname)
+    try:
+        shutil.copy(source, destination_folder+fname+'.jpg')
+    except shutil.SameFileError:
+        print("Source and destination represents the same file.")
+    # If there is any permission issue
+    except PermissionError:
+        print("Permission denied.")
+    # For other errors
+    except Exception as e:
+        print("Error occurred while copying file.:", str(e))
             
 if __name__ == "__main__":
     personInFrame = False
@@ -108,7 +122,7 @@ if __name__ == "__main__":
         try:
             #print('deepcheck')
             print(".",end='',flush=True)
-            response = detection.detectObject(get_image(),output="frane.jpg")
+            response = detection.detectObject(get_image(),output="frame.jpg")
         except:
             print("error reaching deepstackAI")
         try:
@@ -117,6 +131,7 @@ if __name__ == "__main__":
             print("exception caused by unreachable deepstackAI:", str(e))
         #print("PersonInFrame = ", personInFrame)
         if personInFrame:
+            save_image(source='./frame.jpg' ,destination_folder='./detections/') #comment this out so that detections are not saved
             time_from_last_detection = record_delay_end
             if meye_recording_state == False:
                 if time_from_last_detection == record_delay_end:
