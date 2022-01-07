@@ -1,4 +1,3 @@
-#/bin/env python
 import time
 import urllib.request
 from PIL import Image
