@@ -1,3 +1,4 @@
+#/bin/env python
 import time
 import urllib.request
 from PIL import Image
@@ -6,8 +7,9 @@ import urllib.request
 import shutil
 import datetime
 
-threshold = 0.55
+threshold = 0.7
 meye_recording_state = False
+detection_interval = 3.0
 record_delay_end = 15
 time_from_last_detection = record_delay_end
 config = ServerConfig("http://192.168.1.208:89")
@@ -148,7 +150,7 @@ if __name__ == "__main__":
         delta = end - start
         #print("delta:", delta)
         if delta < 1:
-            time.sleep(2.0 - delta)
+            time.sleep(detection_interval - delta)
             end = time.time()
         #print("duration:", end - start)
 
