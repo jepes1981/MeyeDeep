@@ -1,3 +1,16 @@
+#!/usr/bin/env python
+
+#*****************************************************************************************************************************************
+#
+#      for agent DVR deepstack:
+#         http://192.168.1.208:8090/command.cgi?cmd=recordStop&ot=2&oid=1&tag=DeepstackPyDetection
+#         http://192.168.1.208:8090/command.cgi?cmd=record&ot=2&oid=1&tag=DeepstackPyDetection
+#
+#      also refer to https://www.ispyconnect.com/userguide-agent-api.aspx
+#
+#*****************************************************************************************************************************************
+
+
 import time
 import urllib.request
 from PIL import Image
@@ -5,7 +18,16 @@ from deepstack_sdk import ServerConfig, Detection
 import urllib.request
 import shutil
 import datetime
+import followtarget2 as camMover
+import cv2
+import numpy as np
 
+
+#debug flags
+DEBUG = False
+
+MOVECAMERA = True
+cameraMoved = False
 threshold = 0.7
 meye_recording_state = False
 detection_interval = 3.0
@@ -13,10 +35,12 @@ record_delay_end = 15
 time_from_last_detection = record_delay_end
 config = ServerConfig("http://192.168.1.208:89")
 detection = Detection(config)
+targetObject = "person"
 #"{IP}:{port}/{camid}/config/set?
 motioneye_ip = "192.168.1.208"
 motioneye_remote_control_port = "7999"
 motioneye_cam_id = "1"
+
 
 motioneye_set_command = motioneye_ip + ":" + motioneye_remote_control_port + "/" + motioneye_cam_id + "/config/set?"
 motioneye_get_command = motioneye_ip + ":" + motioneye_remote_control_port + "/" + motioneye_cam_id + "/config/get?"
@@ -43,8 +67,8 @@ def check_recording_state():
         print('unknown checking motion eye recording state:', contents)
         return -2
     return 1
-        
-   
+
+
 def stop_recording():
     print("running stop_recording()")
     try:
@@ -60,7 +84,7 @@ def stop_recording():
     except:
         print('exception getting recording state')
         return -1
- 
+
 def start_recording():
     print("running start_recording()")
     try:
@@ -76,7 +100,7 @@ def start_recording():
     except:
         print('exception getting recording state')
         return -1
-    
+
 
 
 def get_image():
@@ -84,15 +108,58 @@ def get_image():
     img = Image.open("output.jpg")
     return img
 
-def check_detection(response, object):
+def get_imageCV():
+    url_response = urllib.request.urlopen("http://192.168.1.208:8765/picture/1/current/")
+    img = cv2.imdecode(np.array(bytearray(url_response.read()), dtype=np.uint8), -1)
+    return img
+
+
+
+def check_detection(response, object, image):
     personfound = False
+    x = 0
+    y = 0
+    xw = 1920
+    yh = 1080
+    personCentroidX = -1
+    personCentroidY = -1
+    listX = []
+    listY = []
+    listXW = []
+    listYH = []
     for obj in response:
+        image = cv2.rectangle(image, (obj.x_min, obj.y_min), (obj.x_max,obj.y_max), (255,0,0), 2)
+        image = cv2.putText(image, obj.label+" "+"{:.2%}".format(obj.confidence), (obj.x_min, obj.y_min-5), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,0,0), 1, cv2.LINE_AA)
+
         if (obj.label == object) and obj.confidence>=threshold:
             personfound = True
             print(obj.label, obj.confidence)
+            print(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             print("Name: {}, Confidence: {}, x_min: {}, y_min: {}, x_max: {}, y_max: {}".format(obj.label, obj.confidence, obj.x_min, obj.y_min, obj.x_max, obj.y_max))
-    return personfound
-  
+            listX.append(obj.x_min)
+            listY.append(obj.y_min)
+            listXW.append(obj.x_max)
+            listYH.append(obj.y_max)
+            #image = cv2.rectangle(image, (obj.x_min, obj.y_min), (obj.x_max,obj.y_max), (255,0,0), 2)
+            #image = cv2.putText(image, obj.label, (obj.x_min, obj.y_min-5), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,0,0), 1, cv2.LINE_AA)
+            #create a box when multiple objects are detected
+
+
+    # computer center of box if person is found before returning
+    if personfound:
+        x = min(listX)
+        y = min(listY)
+        xw = max(listXW)
+        yh = max(listYH)
+        personCentroidX = int((x+xw)/2)
+        personCentroidY = int((y+yh)/2)
+        image = cv2.rectangle(image, (x, y), (xw ,yh), (0,0,255), 20)
+        image = cv2.circle(image, (personCentroidX, personCentroidY), 5, (0,0,255), 5)
+        image = cv2.putText(image, str(personCentroidX)+","+str(personCentroidY), (personCentroidX, personCentroidY-5), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,0,0), 1, cv2.LINE_AA)
+    return personfound, personCentroidX, personCentroidY, image
+
+
+
 def save_image(source,destination_folder):  #source=path and filename #destination_folder=folder only path
     fname = str(datetime.datetime.now()).replace("-", "").replace(" ", "").replace(":", "").replace(".", "")
     print(fname)
@@ -106,8 +173,16 @@ def save_image(source,destination_folder):  #source=path and filename #destinati
     # For other errors
     except Exception as e:
         print("Error occurred while copying file.:", str(e))
-            
+
+def showImage(img):
+    x, y, xw, yh = camMover.centerPercentageCoords(1920, 1080, 0.2)
+    img = cv2.rectangle(img, (x, y), (xw, yh), (0, 255, 0), 1)
+    cv2.imshow("debugWindow", img)
+    cv2.waitKey(1)
+
 if __name__ == "__main__":
+    centroidX = -1
+    centroidY = -1
     personInFrame = False
     if(check_recording_state()> 0):
        stop_recording()
@@ -121,29 +196,41 @@ if __name__ == "__main__":
     while True:
         start = time.time()
         try:
+            rtspFrame = get_imageCV()
+        except Exception as e:
+            print("Exception getting frame:", str(e))
+        try:
             #print('deepcheck')
             print(".",end='',flush=True)
-            response = detection.detectObject(get_image(),output="frame.jpg")
+            response = detection.detectObject( rtspFrame,output="frame.jpg")
         except:
             print("error reaching deepstackAI")
         try:
-            personInFrame = check_detection(response, object="person")
+            personInFrame, centroidX, centroidY, rtspFrame = check_detection(response, object=targetObject, image=rtspFrame)
         except Exception as e:
             print("exception caused by unreachable deepstackAI:", str(e))
         #print("PersonInFrame = ", personInFrame)
+        if DEBUG:
+            showImage(rtspFrame)
         if personInFrame:
+            if MOVECAMERA:
+              cameraMoved = camMover.cameraTracker(centroidX, centroidY)
             save_image(source='./frame.jpg' ,destination_folder='./detections/') #comment this out so that detections are not saved
             time_from_last_detection = record_delay_end
             if meye_recording_state == False:
                 if time_from_last_detection == record_delay_end:
                     start_recording()
                     meye_recording_state = True
+
         if not(personInFrame) and meye_recording_state == True:
             time_from_last_detection = time_from_last_detection - 1
             print("time_from_last_detection:", time_from_last_detection)
             if time_from_last_detection <= 0:
                 stop_recording()
                 meye_recording_state = False
+                if cameraMoved and MOVECAMERA:
+                    camMover.resetCameraPosition()
+                    cameraMoved = False
                 print("meye_recording_state:",meye_recording_state)
         end = time.time()
         delta = end - start
@@ -152,10 +239,3 @@ if __name__ == "__main__":
             time.sleep(detection_interval - delta)
             end = time.time()
         #print("duration:", end - start)
-
-
-
-            
-        
-
-
