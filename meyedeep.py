@@ -1,16 +1,5 @@
 #!/usr/bin/env python
 
-#*****************************************************************************************************************************************
-#
-#      for agent DVR deepstack:
-#         http://192.168.1.208:8090/command.cgi?cmd=recordStop&ot=2&oid=1&tag=DeepstackPyDetection
-#         http://192.168.1.208:8090/command.cgi?cmd=record&ot=2&oid=1&tag=DeepstackPyDetection
-#
-#      also refer to https://www.ispyconnect.com/userguide-agent-api.aspx
-#
-#*****************************************************************************************************************************************
-
-
 import time
 import urllib.request
 from PIL import Image
@@ -22,14 +11,13 @@ import followtarget2 as camMover
 import cv2
 import numpy as np
 
-
 #debug flags
 DEBUG = False
 
 MOVECAMERA = True
 cameraMoved = False
 threshold = 0.7
-meye_recording_state = False
+recording_state = False
 detection_interval = 3.0
 record_delay_end = 15
 time_from_last_detection = record_delay_end
@@ -45,73 +33,81 @@ motioneye_cam_id = "1"
 motioneye_set_command = motioneye_ip + ":" + motioneye_remote_control_port + "/" + motioneye_cam_id + "/config/set?"
 motioneye_get_command = motioneye_ip + ":" + motioneye_remote_control_port + "/" + motioneye_cam_id + "/config/get?"
 
-def check_recording_state():
-    print("return recording state")
-    try:
-        print("attempting to open meye query path")
-        contents = urllib.request.urlopen("http://"+motioneye_get_command+"query=emulate_motion",timeout=10).read().decode()
-        print("contents:", contents)
-        contents = contents[30:32]
-    except:
-        print('exception getting recording state')
-        return -1
-    if contents == 'on':
-        print('motioneye currently recording')
-        meye_recording_state = True
-        return 1
-    elif contents == 'of':
-        print('motioneye currently NOT recording')
-        meye_recording_state = False
-        return 1
-    else:
-        print('unknown checking motion eye recording state:', contents)
-        return -2
-    return 1
+class MotionEye:
+    def __init__(self, motioneye_set_command, motioneye_get_command, motioneye_recording_state, motioneye_ip, motioneye_remote_control_port, motioneye_cam_id):
+        self.motioneye_set_command = motioneye_set_command
+        self.motioneye_get_command = motioneye_get_command
+        self.meye_recording_state = motioneye_recording_state
+        self.motioneye_ip = motioneye_ip
+        self.motioneye_remote_control_port = motioneye_remote_control_port
+        self.motioneye_cam_id = motioneye_cam_id
 
-
-def stop_recording():
-    print("running stop_recording()")
-    try:
-        contents = urllib.request.urlopen("http://"+motioneye_set_command+"emulate_motion=0",timeout=10).read().decode()
-        #print(contents)
-        if(contents.find('emulate_motion =')>=0):
-            #contents = contents[17:18]
-            print(contents)
-            return 0
-        else:
-            print("error stopping motioneye recording:", contents)
+    def check_recording_state(self):
+        print("return recording state")
+        try:
+            print("attempting to open meye query path")
+            contents = urllib.request.urlopen("http://"+self.motioneye_get_command+"query=emulate_motion",timeout=10).read().decode()
+            print("contents:", contents)
+            contents = contents[30:32]
+        except:
+            print('exception getting recording state')
             return -1
-    except:
-        print('exception getting recording state')
-        return -1
-
-def start_recording():
-    print("running start_recording()")
-    try:
-        contents = urllib.request.urlopen("http://"+motioneye_set_command+"emulate_motion=1",timeout=10).read().decode()
-        #print(contents)
-        if(contents.find('emulate_motion =')>=0):
-            #contents = contents[17:18]
-            print(contents)
-            return 0
+        if contents == 'on':
+            print('motioneye currently recording')
+            self.meye_recording_state = True
+            return 1
+        elif contents == 'of':
+            print('motioneye currently NOT recording')
+            self.meye_recording_state = False
+            return 1
         else:
-            print("error starting motioneye recording:", contents)
+            print('unknown checking motion eye recording state:', contents)
+            return -2
+        return 1
+
+
+
+    def stop_recording(self):
+        print("running stop_recording()")
+        try:
+            contents = urllib.request.urlopen("http://"+self.motioneye_set_command+"emulate_motion=0",timeout=10).read().decode()
+            #print(contents)
+            if(contents.find('emulate_motion =')>=0):
+                #contents = contents[17:18]
+                print(contents)
+                return 0
+            else:
+                print("error stopping motioneye recording:", contents)
+                return -1
+        except:
+            print('exception getting recording state')
             return -1
-    except:
-        print('exception getting recording state')
-        return -1
 
+    def start_recording(self):
+        print("running start_recording()")
+        try:
+            contents = urllib.request.urlopen("http://"+self.motioneye_set_command+"emulate_motion=1",timeout=10).read().decode()
+            #print(contents)
+            if(contents.find('emulate_motion =')>=0):
+                #contents = contents[17:18]
+                print(contents)
+                return 0
+            else:
+                print("error starting motioneye recording:", contents)
+                return -1
+        except:
+            print('exception getting recording state')
+            return -1
 
+    def get_image(self):
+        urllib.request.urlretrieve("http://"+self.motioneye_ip+":8765/picture/1/current/", "output.jpg")
+        img = Image.open("output.jpg")
+        return img
 
-def get_image():
-    urllib.request.urlretrieve("http://192.168.1.208:8765/picture/1/current/", "output.jpg")
-    img = Image.open("output.jpg")
-    return img
-
-def get_imageCV():
-    url_response = urllib.request.urlopen("http://192.168.1.208:8765/picture/1/current/")
-    img = cv2.imdecode(np.array(bytearray(url_response.read()), dtype=np.uint8), -1)
-    return img
+    def get_imageCV(self):
+        url_response = urllib.request.urlopen("http://"+self.motioneye_ip+":8765/picture/1/current/")
+        img = cv2.imdecode(np.array(bytearray(url_response.read()), dtype=np.uint8), -1)
+        return img
 
 
 
@@ -180,15 +176,21 @@ def showImage(img):
     cv2.imshow("debugWindow", img)
     cv2.waitKey(1)
 
-if __name__ == "__main__":
+
+def main():
     centroidX = -1
     centroidY = -1
     personInFrame = False
-    if(check_recording_state()> 0):
-       stop_recording()
+
+    motioneye = MotionEye( motioneye_set_command, motioneye_get_command, recording_state, motioneye_ip, motioneye_remote_control_port, motioneye_cam_id)
+
+
+
+    if(motioneye.check_recording_state()> 0):
+       motioneye.stop_recording()
     while True:
         print("loop")
-        if(check_recording_state() > 0):
+        if(motioneye.check_recording_state() > 0):
             break
         else:
             print("cannot check recording state, retrying after 1 second...")
@@ -196,7 +198,7 @@ if __name__ == "__main__":
     while True:
         start = time.time()
         try:
-            rtspFrame = get_imageCV()
+            rtspFrame = motioneye.get_imageCV()
         except Exception as e:
             print("Exception getting frame:", str(e))
         try:
@@ -217,21 +219,22 @@ if __name__ == "__main__":
               cameraMoved = camMover.cameraTracker(centroidX, centroidY)
             save_image(source='./frame.jpg' ,destination_folder='./detections/') #comment this out so that detections are not saved
             time_from_last_detection = record_delay_end
-            if meye_recording_state == False:
+            if motioneye.meye_recording_state == False:
                 if time_from_last_detection == record_delay_end:
-                    start_recording()
-                    meye_recording_state = True
+                    motioneye.start_recording()
+                    motioneye.meye_recording_state = True
 
-        if not(personInFrame) and meye_recording_state == True:
+
+        if not(personInFrame) and motioneye.meye_recording_state == True:
             time_from_last_detection = time_from_last_detection - 1
             print("time_from_last_detection:", time_from_last_detection)
             if time_from_last_detection <= 0:
-                stop_recording()
-                meye_recording_state = False
+                motioneye.stop_recording()
+                motioneye.meye_recording_state = False
                 if cameraMoved and MOVECAMERA:
                     camMover.resetCameraPosition()
                     cameraMoved = False
-                print("meye_recording_state:",meye_recording_state)
+                print("meye_recording_state:",motioneye.meye_recording_state)
         end = time.time()
         delta = end - start
         #print("delta:", delta)
@@ -239,3 +242,6 @@ if __name__ == "__main__":
             time.sleep(detection_interval - delta)
             end = time.time()
         #print("duration:", end - start)
+
+if __name__ == "__main__":
+    main()
